@@ -23,9 +23,9 @@ import android.app.Dialog;
 import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.os.Handler;
 import android.view.Display;
 import android.view.Gravity;
@@ -40,17 +40,15 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.RelativeLayout;
 
+import com.mobicage.rogerthat.cordova.CordovaActionScreenActivity;
+
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
-import org.apache.cordova.CordovaWebView;
 import org.json.JSONArray;
 import org.json.JSONException;
 
 public class SplashScreen extends CordovaPlugin {
     private static final String LOG_TAG = "SplashScreen";
-    // Cordova 3.x.x has a copy of this plugin bundled with it (SplashScreenInternal.java).
-    // Enable functionality only if running on 4.x.x.
-    private static final boolean HAS_BUILT_IN_SPLASH_SCREEN = Integer.valueOf(CordovaWebView.CORDOVA_VERSION.split("\\.")[0]) < 4;
     private static final int DEFAULT_SPLASHSCREEN_DURATION = 3000;
     private static final int DEFAULT_FADE_DURATION = 500;
     private static Dialog splashDialog;
@@ -79,9 +77,6 @@ public class SplashScreen extends CordovaPlugin {
 
     @Override
     protected void pluginInitialize() {
-        if (HAS_BUILT_IN_SPLASH_SCREEN) {
-            return;
-        }
         // Make WebView invisible while loading URL
         // CB-11326 Ensure we're calling this on UI thread
         cordova.getActivity().runOnUiThread(new Runnable() {
@@ -90,28 +85,13 @@ public class SplashScreen extends CordovaPlugin {
                 getView().setVisibility(View.INVISIBLE);
             }
         });
-        int drawableId = preferences.getInteger("SplashDrawableId", 0);
-        if (drawableId == 0) {
-            String splashResource = preferences.getString("SplashScreen", "screen");
-            if (splashResource != null) {
-                drawableId = cordova.getActivity().getResources().getIdentifier(splashResource, "drawable", cordova.getActivity().getClass().getPackage().getName());
-                if (drawableId == 0) {
-                    drawableId = cordova.getActivity().getResources().getIdentifier(splashResource, "drawable", cordova.getActivity().getPackageName());
-                }
-                preferences.set("SplashDrawableId", drawableId);
-            }
-        }
 
         // Save initial orientation.
         orientation = cordova.getActivity().getResources().getConfiguration().orientation;
 
         if (firstShow) {
-            boolean autoHide = preferences.getBoolean("AutoHideSplashScreen", true);
+            boolean autoHide = true;
             showSplashScreen(autoHide);
-        }
-
-        if (preferences.getBoolean("SplashShowOnlyFirstTime", true)) {
-            firstShow = false;
         }
     }
 
@@ -119,36 +99,21 @@ public class SplashScreen extends CordovaPlugin {
      * Shorter way to check value of "SplashMaintainAspectRatio" preference.
      */
     private boolean isMaintainAspectRatio () {
-        return preferences.getBoolean("SplashMaintainAspectRatio", false);
+        return true;
     }
 
     private int getFadeDuration () {
-        int fadeSplashScreenDuration = preferences.getBoolean("FadeSplashScreen", true) ?
-            preferences.getInteger("FadeSplashScreenDuration", DEFAULT_FADE_DURATION) : 0;
-
-        if (fadeSplashScreenDuration < 30) {
-            // [CB-9750] This value used to be in decimal seconds, so we will assume that if someone specifies 10
-            // they mean 10 seconds, and not the meaningless 10ms
-            fadeSplashScreenDuration *= 1000;
-        }
-
-        return fadeSplashScreenDuration;
+        return 0;
     }
 
     @Override
     public void onPause(boolean multitasking) {
-        if (HAS_BUILT_IN_SPLASH_SCREEN) {
-            return;
-        }
         // hide the splash screen to avoid leaking a window
         this.removeSplashScreen(true);
     }
 
     @Override
     public void onDestroy() {
-        if (HAS_BUILT_IN_SPLASH_SCREEN) {
-            return;
-        }
         // hide the splash screen to avoid leaking a window
         this.removeSplashScreen(true);
         // If we set this to true onDestroy, we lose track when we go from page to page!
@@ -179,9 +144,6 @@ public class SplashScreen extends CordovaPlugin {
 
     @Override
     public Object onMessage(String id, Object data) {
-        if (HAS_BUILT_IN_SPLASH_SCREEN) {
-            return null;
-        }
         if ("splashscreen".equals(id)) {
             if ("hide".equals(data.toString())) {
                 this.removeSplashScreen(false);
@@ -196,21 +158,6 @@ public class SplashScreen extends CordovaPlugin {
             this.spinnerStop();
         }
         return null;
-    }
-
-    // Don't add @Override so that plugin still compiles on 3.x.x for a while
-    public void onConfigurationChanged(Configuration newConfig) {
-        if (newConfig.orientation != orientation) {
-            orientation = newConfig.orientation;
-
-            // Splash drawable may change with orientation, so reload it.
-            if (splashImageView != null) {
-                int drawableId = preferences.getInteger("SplashDrawableId", 0);
-                if (drawableId != 0) {
-                    splashImageView.setImageDrawable(cordova.getActivity().getResources().getDrawable(drawableId));
-                }
-            }
-        }
     }
 
     private void removeSplashScreen(final boolean forceHideImmediately) {
@@ -262,8 +209,7 @@ public class SplashScreen extends CordovaPlugin {
      */
     @SuppressWarnings("deprecation")
     private void showSplashScreen(final boolean hideAfterDelay) {
-        final int splashscreenTime = preferences.getInteger("SplashScreenDelay", DEFAULT_SPLASHSCREEN_DURATION);
-        final int drawableId = preferences.getInteger("SplashDrawableId", 0);
+        final int splashscreenTime = DEFAULT_SPLASHSCREEN_DURATION;
 
         final int fadeSplashScreenDuration = getFadeDuration();
         final int effectiveSplashDuration = Math.max(0, splashscreenTime - fadeSplashScreenDuration);
@@ -274,7 +220,10 @@ public class SplashScreen extends CordovaPlugin {
         if (splashDialog != null && splashDialog.isShowing()) {
             return;
         }
-        if (drawableId == 0 || (splashscreenTime <= 0 && hideAfterDelay)) {
+
+        final Drawable d = ((CordovaActionScreenActivity)cordova.getActivity()).getSplashScreenDrawable();
+
+        if (d == null || splashscreenTime <= 0 && hideAfterDelay) {
             return;
         }
 
@@ -286,7 +235,8 @@ public class SplashScreen extends CordovaPlugin {
 
                 // Use an ImageView to render the image because of its flexible scaling options.
                 splashImageView = new ImageView(context);
-                splashImageView.setImageResource(drawableId);
+                splashImageView.setImageDrawable(d);
+
                 LayoutParams layoutParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
                 splashImageView.setLayoutParams(layoutParams);
 
@@ -294,7 +244,7 @@ public class SplashScreen extends CordovaPlugin {
                 splashImageView.setMinimumWidth(display.getWidth());
 
                 // TODO: Use the background color of the webView's parent instead of using the preference.
-                splashImageView.setBackgroundColor(preferences.getInteger("backgroundColor", Color.BLACK));
+                splashImageView.setBackgroundColor(Color.BLACK);
 
                 if (isMaintainAspectRatio()) {
                     // CENTER_CROP scale mode is equivalent to CSS "background-size:cover"
@@ -317,9 +267,6 @@ public class SplashScreen extends CordovaPlugin {
                 splashDialog.setCancelable(false);
                 splashDialog.show();
 
-                if (preferences.getBoolean("ShowSplashScreenSpinner", true)) {
-                    spinnerStart();
-                }
 
                 // Set Runnable to remove splash screen just in case
                 if (hideAfterDelay) {
