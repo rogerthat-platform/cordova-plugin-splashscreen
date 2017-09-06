@@ -21,6 +21,7 @@
 #import <Cordova/CDVViewController.h>
 #import <Cordova/CDVScreenOrientationDelegate.h>
 #import "CDVViewController+SplashScreen.h"
+#import "MCTCordovaScreenBrandingVC.h"
 
 #define kSplashScreenDurationDefault 3000.0f
 #define kFadeDurationDefault 500.0f
@@ -327,85 +328,22 @@
 // Sets the view's frame and image.
 - (void)updateImage
 {
-    NSString* imageName = [self getImageName:[self getCurrentOrientation] delegate:(id<CDVScreenOrientationDelegate>)self.viewController device:[self getCurrentDevice]];
-
-    if (![imageName isEqualToString:_curImageName])
-    {
-        UIImage* img = [UIImage imageNamed:imageName];
-        _imageView.image = img;
-        _curImageName = imageName;
-    }
+    _imageView.image = [self.vc getSplashScreenImage];
 
     // Check that splash screen's image exists before updating bounds
     if (_imageView.image)
     {
         [self updateBounds];
     }
-    else
-    {
-        NSLog(@"WARNING: The splashscreen image named %@ was not found", imageName);
-    }
+
 }
 
 - (void)updateBounds
 {
-    if ([self isUsingCDVLaunchScreen]) {
-        // CB-9762's launch screen expects the image to fill the screen and be scaled using AspectFill.
-        CGSize viewportSize = [UIApplication sharedApplication].delegate.window.bounds.size;
-        _imageView.frame = CGRectMake(0, 0, viewportSize.width, viewportSize.height);
-        _imageView.contentMode = UIViewContentModeScaleAspectFill;
-        return; 
-    }
-
-    UIImage* img = _imageView.image;
-    CGRect imgBounds = (img) ? CGRectMake(0, 0, img.size.width, img.size.height) : CGRectZero;
-
-    CGSize screenSize = [self.viewController.view convertRect:[UIScreen mainScreen].bounds fromView:nil].size;
-    UIInterfaceOrientation orientation = [UIApplication sharedApplication].statusBarOrientation;
-    CGAffineTransform imgTransform = CGAffineTransformIdentity;
-
-    /* If and only if an iPhone application is landscape-only as per
-     * UISupportedInterfaceOrientations, the view controller's orientation is
-     * landscape. In this case the image must be rotated in order to appear
-     * correctly.
-     */
-    CDV_iOSDevice device = [self getCurrentDevice];
-    if (UIInterfaceOrientationIsLandscape(orientation) && !device.iPhone6Plus && !device.iPad)
-    {
-        imgTransform = CGAffineTransformMakeRotation(M_PI / 2);
-        imgBounds.size = CGSizeMake(imgBounds.size.height, imgBounds.size.width);
-    }
-
-    // There's a special case when the image is the size of the screen.
-    if (CGSizeEqualToSize(screenSize, imgBounds.size))
-    {
-        CGRect statusFrame = [self.viewController.view convertRect:[UIApplication sharedApplication].statusBarFrame fromView:nil];
-        if (!(IsAtLeastiOSVersion(@"7.0")))
-        {
-            imgBounds.origin.y -= statusFrame.size.height;
-        }
-    }
-    else if (imgBounds.size.width > 0)
-    {
-        CGRect viewBounds = self.viewController.view.bounds;
-        CGFloat imgAspect = imgBounds.size.width / imgBounds.size.height;
-        CGFloat viewAspect = viewBounds.size.width / viewBounds.size.height;
-        // This matches the behaviour of the native splash screen.
-        CGFloat ratio;
-        if (viewAspect > imgAspect)
-        {
-            ratio = viewBounds.size.width / imgBounds.size.width;
-        }
-        else
-        {
-            ratio = viewBounds.size.height / imgBounds.size.height;
-        }
-        imgBounds.size.height *= ratio;
-        imgBounds.size.width *= ratio;
-    }
-
-    _imageView.transform = imgTransform;
-    _imageView.frame = imgBounds;
+    // CB-9762's launch screen expects the image to fill the screen and be scaled using AspectFill.
+    CGSize viewportSize = [UIApplication sharedApplication].delegate.window.bounds.size;
+    _imageView.frame = CGRectMake(0, 0, viewportSize.width, viewportSize.height);
+    _imageView.contentMode = UIViewContentModeScaleAspectFill;
 }
 
 - (void)setVisible:(BOOL)visible
@@ -427,18 +365,7 @@
         id splashDurationString = [self.commandDelegate.settings objectForKey: [@"SplashScreenDelay" lowercaseString]];
         float splashDuration = splashDurationString == nil ? kSplashScreenDurationDefault : [splashDurationString floatValue];
 
-        id autoHideSplashScreenValue = [self.commandDelegate.settings objectForKey:[@"AutoHideSplashScreen" lowercaseString]];
         BOOL autoHideSplashScreen = true;
-
-        if (autoHideSplashScreenValue != nil) {
-            autoHideSplashScreen = [autoHideSplashScreenValue boolValue];
-        }
-
-        if (!autoHideSplashScreen) {
-            // CB-10412 SplashScreenDelay does not make sense if the splashscreen is hidden manually
-            splashDuration = 0;
-        }
-
 
         if (fadeSplashScreenValue == nil)
         {
@@ -501,6 +428,11 @@
             })));
         }
     }
+}
+
+- (MCTCordovaScreenBrandingVC *)vc
+{
+    return ((MCTCordovaScreenBrandingVC *)self.viewController);
 }
 
 @end
